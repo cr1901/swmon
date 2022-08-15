@@ -1,31 +1,31 @@
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use ddc_hi::{Ddc, Display};
-use anyhow::Result;
-
-// use ddc::Ddc;
-// use ddc_winapi::Monitor;
+use ddc_hi::{Ddc, Display, DisplayInfo};
+use tabled::{Style, Table, Tabled};
 
 #[derive(clap::Parser)]
+/// Switch monitor input source from command-line
 pub struct Args {
     #[clap(subcommand)]
-    pub cmd: Cmd
+    pub cmd: Cmd,
 }
 
 #[derive(Subcommand)]
 pub enum Cmd {
     /// List displays and exit
     List,
-    /// Input source to switch to
+    /// Switch input source using given display
     Switch {
-        #[clap(short = 'b')]
-        backend: Option<String>,
+        /// Display number to use (No. column in list)
         #[clap(short = 'm')]
-        model: Option<String>,
+        monitor: u8,
+        /// Input source to switch to
         #[clap(value_enum)]
-        input: InputSource
+        input: InputSource,
     },
 }
 
+/// MCCS input sources- names follow the spec for Feature Code 0x60.
 #[derive(Clone, Copy, ValueEnum)]
 pub enum InputSource {
     Vga1 = 1,
@@ -45,7 +45,50 @@ pub enum InputSource {
     DisplayPort1,
     DisplayPort2,
     Hdmi1,
-    Hdmi2
+    Hdmi2,
+}
+
+pub struct TableDisplayInfo<'a> {
+    number: u8,
+    info: &'a DisplayInfo,
+}
+
+impl<'a> Tabled for TableDisplayInfo<'a> {
+    const LENGTH: usize = 5;
+
+    fn fields(&self) -> Vec<String> {
+        vec![
+            format!("{}", self.number),
+            format!("{}", self.info.backend),
+            self.info.id.clone(),
+            format!(
+                "{}",
+                &self
+                    .info
+                    .manufacturer_id
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or("?".into())
+            ),
+            format!(
+                "{}",
+                &self.info.model_name.as_ref().cloned().unwrap_or("?".into())
+            ),
+        ]
+    }
+
+    fn headers() -> Vec<String> {
+        vec![
+            "No.",
+            "Backend",
+            "Display ID",
+            "Manufacturer ID",
+            "Model Name",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<String>>()
+    }
 }
 
 fn main() -> Result<()> {
@@ -53,31 +96,34 @@ fn main() -> Result<()> {
 
     match args.cmd {
         Cmd::List => {
-            for mut display in Display::enumerate() {
-                if display.update_capabilities().is_ok() {
-                    println!(
-                        "{:?} {}: {:?} {:?}",
-                        display.info.backend,
-                        display.info.id,
-                        display.info.manufacturer_id,
-                        display.info.model_name
-                    );
-                }
-            }
-        },
+            let mut display = Display::enumerate();
+            let display_info = display
+                .iter_mut()
+                .enumerate()
+                .filter_map(|(i, display)| {
+                    if display.update_capabilities().is_ok() {
+                        Some(TableDisplayInfo {
+                            number: i as u8,
+                            info: &display.info,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<TableDisplayInfo>>();
 
-        Cmd::Switch { backend, model, input } => {
-            for mut display in Display::enumerate() {
-                if model.is_some() || backend.is_some() {
-                    unimplemented!("choosing the monitor/backend is unimplemented.")
-                }
+            let table = Table::new(&display_info).with(Style::blank());
+            println!("{}", table);
+        }
 
-                display.handle.set_vcp_feature(0x60, input as u16)?;
-                break;
-            }
+        Cmd::Switch { monitor, input } => {
+            let mut display = Display::enumerate();
+            let chosen = display
+                .get_mut(monitor as usize)
+                .ok_or(anyhow!("monitor number {} out of range", monitor))?;
+            chosen.handle.set_vcp_feature(0x60, input as u16)?;
         }
     }
 
     Ok(())
 }
-

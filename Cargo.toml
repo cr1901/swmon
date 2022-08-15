@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.61"
 clap = { version = "3.2.17", features = ["derive"] }
 ddc-hi = "0.4.1"
+tabled = "0.8.0"
 
 [profile.release]
 opt-level = "s"
