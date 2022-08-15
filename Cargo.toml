@@ -1,0 +1,16 @@
+[package]
+name = "swmon"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.61"
+clap = { version = "3.2.17", features = ["derive"] }
+ddc-hi = "0.4.1"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+strip = "symbols"
