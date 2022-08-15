@@ -4,6 +4,7 @@ use ddc_hi::{Ddc, Display, DisplayInfo};
 use tabled::{Style, Table, Tabled};
 
 #[derive(clap::Parser)]
+#[clap(author, version)]
 /// Switch monitor input source from command-line
 pub struct Args {
     #[clap(subcommand)]
@@ -12,7 +13,7 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// List displays and exit
+    /// List DDC-capable displays and exit
     List,
     /// Switch input source using given display
     Switch {
