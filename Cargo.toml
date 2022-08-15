@@ -12,6 +12,7 @@ ddc-hi = "0.4.1"
 tabled = "0.8.0"
 
 [profile.release]
-opt-level = "s"
+codegen-units = 1
+opt-level = "z"
 lto = "fat"
 strip = "symbols"
