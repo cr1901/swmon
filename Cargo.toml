@@ -7,10 +7,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.61"
-clap = { version = "3.2.17", features = ["derive"] }
+anyhow = "1.0.68"
+clap = { version = "4.0.32", default_features=false, features = ["std", "derive"] }
 ddc-hi = "0.4.1"
-tabled = "0.8.0"
+tabled = "0.10.0"
 
 [profile.release]
 codegen-units = 1

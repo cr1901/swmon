@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use ddc_hi::{Ddc, Display, DisplayInfo};
@@ -57,7 +59,7 @@ pub struct TableDisplayInfo<'a> {
 impl<'a> Tabled for TableDisplayInfo<'a> {
     const LENGTH: usize = 5;
 
-    fn fields(&self) -> Vec<String> {
+    fn fields(&self) -> Vec<Cow<'static, str>> {
         vec![
             format!("{}", self.number),
             format!("{}", self.info.backend),
@@ -76,9 +78,12 @@ impl<'a> Tabled for TableDisplayInfo<'a> {
                 &self.info.model_name.as_ref().cloned().unwrap_or("?".into())
             ),
         ]
+        .into_iter()
+        .map(|s| Cow::<'static, _>::Owned(s))
+        .collect()
     }
 
-    fn headers() -> Vec<String> {
+    fn headers() -> Vec<Cow<'static, str>> {
         vec![
             "No.",
             "Backend",
@@ -87,8 +92,8 @@ impl<'a> Tabled for TableDisplayInfo<'a> {
             "Model Name",
         ]
         .into_iter()
-        .map(String::from)
-        .collect::<Vec<String>>()
+        .map(|s| Cow::Borrowed(s))
+        .collect()
     }
 }
 
@@ -113,8 +118,8 @@ fn main() -> Result<()> {
                 })
                 .collect::<Vec<TableDisplayInfo>>();
 
-            let table = Table::new(&display_info).with(Style::blank());
-            println!("{}", table);
+            let mut table = Table::new(&display_info);
+            println!("{}", table.with(Style::blank()));
         }
 
         Cmd::Switch { monitor, input } => {

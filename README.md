@@ -19,7 +19,7 @@ I do not provide a [crates.io](https://crates.io) release at this time.
    2     nvapi     GF108GL/2147881094:Lvds   ACR               VG220Q
    ```
    
-   Monitors that don't speak DDC orotocols are excluded from the table; in my
+   Monitors that don't speak DDC protocols are excluded from the table; in my
    example, monitor `1` is missing. `swmon list` may take several seconds
    trying to talk to monitors that cannot speak via DDC.
 
