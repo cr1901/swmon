@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.68"
-clap = { version = "4.0.32", default_features=false, features = ["std", "derive"] }
+clap = { version = "4.0.32", default_features=false, features = ["std", "derive", "help"] }
 ddc-hi = "0.4.1"
 tabled = "0.10.0"
 
