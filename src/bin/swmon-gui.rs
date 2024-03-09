@@ -6,18 +6,31 @@ use std::sync::mpsc;
 use std::thread;
 use strum::IntoEnumIterator;
 
-use eframe::{egui, App};
+use eframe::egui;
 use swmon::{collect_display_info, do_switch, InputSource, TableDisplayInfo};
 
-enum AppState {
-    SendDetect,
-    Detect(oneshot::Receiver<BgResult<Vec<TableDisplayInfo<'static>>>>),
-    Idle {
-        displays: Vec<TableDisplayInfo<'static>>,
-        monitor_select: u8,
-        input_select: InputSource,
+struct AppState {
+    control: ControlFlow,
+    switch: Option<SwitchState>
+}
+
+enum ControlFlow {
+    Waiting(WaitReason),
+    Idle
+}
+
+struct SwitchState {
+    displays: Vec<TableDisplayInfo<'static>>,
+    monitor_select: u8,
+    input_select: InputSource,
+}
+
+enum WaitReason {
+    Detecting {
+        just_switched: bool,
+        recv: oneshot::Receiver<BgResult<Vec<TableDisplayInfo<'static>>>>
     },
-    Switch(oneshot::Receiver<BgResult<()>>),
+    Switching(oneshot::Receiver<BgResult<()>>)
 }
 
 struct BackgroundError {}
@@ -68,43 +81,46 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let mut state = AppState::SendDetect;
-
-    // Our application state:
     let (cmd_send, cmd_recv) = mpsc::channel();
+    let (send, recv) = oneshot::channel();
+    cmd_send.clone().send(Cmd::DetectMonitors(send));
+    let mut state = AppState { control: ControlFlow::Waiting(WaitReason::Detecting { just_switched: false, recv }), switch: None};
     thread::spawn(|| bg_thread(cmd_recv));
 
     eframe::run_simple_native("swmon", options, move |ctx, _frame| {
-        egui::CentralPanel::default().show(ctx, |ui| match &mut state {
-            AppState::SendDetect => {
-                let (send, recv) = oneshot::channel();
-                cmd_send.clone().send(Cmd::DetectMonitors(send));
-                state = AppState::Detect(recv);
-            }
-            AppState::Detect(recv) => {
-                ui.label(format!("Detecting attached monitors... please wait"));
+        egui::CentralPanel::default().show(ctx, |ui| match &mut state.control {
+            ControlFlow::Waiting(WaitReason::Detecting { just_switched, recv }) => {
+                if *just_switched {
+                    // Quietly go back to detection if we just switched inputs
+                    ui.label(format!("Switching inputs... please wait"));
+                } else {
+                    ui.label(format!("Detecting attached monitors... please wait"));
+                }
                 let recv_res = recv.try_recv();
 
                 match recv_res {
                     Ok(Ok(displays)) if displays.len() > 0 => {
-                        state = AppState::Idle {
-                            displays,
-                            monitor_select: 0,
-                            input_select: InputSource::Vga1,
-                        };
+                        if !*just_switched {
+                            state.switch = Some(SwitchState {
+                                displays,
+                                monitor_select: 0,
+                                input_select: InputSource::Vga1,
+                            });
+                        }
+                        state.control = ControlFlow::Idle;
                     }
-                    Ok(Ok(displays)) if displays.len() == 0 => state = AppState::SendDetect,
+                    Ok(Ok(displays)) if displays.len() == 0 => {
+                        let (send, recv_) = oneshot::channel();
+                        cmd_send.clone().send(Cmd::DetectMonitors(send));
+                        *recv = recv_
+                    }
                     Ok(Ok(_)) => unreachable!(),
                     Ok(Err(_)) => todo!(),
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => todo!(),
                 }
             }
-            AppState::Idle {
-                displays,
-                monitor_select,
-                input_select,
-            } => {
+            ControlFlow::Idle => {
                 fn choice_text(d: &DisplayInfo) -> String {
                     return format!(
                         "{} {} ({})",
@@ -113,6 +129,8 @@ fn main() -> Result<(), eframe::Error> {
                         d.backend
                     );
                 }
+
+                let SwitchState { displays, ref mut monitor_select, ref mut input_select } = state.switch.as_mut().unwrap();
 
                 let combo = egui::ComboBox::from_label("Select display")
                     .selected_text(choice_text(&displays[*monitor_select as usize].info));
@@ -138,16 +156,18 @@ fn main() -> Result<(), eframe::Error> {
                         *input_select,
                         send,
                     )));
-                    state = AppState::Switch(recv);
+                    state.control = ControlFlow::Waiting(WaitReason::Switching(recv));
                 }
-            }
-            AppState::Switch(recv) => {
+            },
+            ControlFlow::Waiting(WaitReason::Switching(recv)) => {
                 ui.label(format!("Switching inputs... please wait"));
                 let recv_res = recv.try_recv();
 
                 match recv_res {
                     Ok(Ok(_)) => {
-                        state = AppState::SendDetect;
+                        let (send, recv) = oneshot::channel();
+                        cmd_send.clone().send(Cmd::DetectMonitors(send));
+                        state.control = ControlFlow::Waiting(WaitReason::Detecting { just_switched: true, recv });
                     }
                     Ok(Err(_)) => todo!(),
                     Err(TryRecvError::Empty) => {}
