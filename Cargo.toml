@@ -10,6 +10,9 @@ edition = "2021"
 anyhow = "1.0.68"
 clap = { version = "4.0.32", default_features=false, features = ["std", "derive", "help"] }
 ddc-hi = "0.4.1"
+eframe = { version = "0.26.2", optional = true }
+oneshot = { version = "0.1.6", default_features=false, features = ["std"], optional = true }
+strum = { version = "0.26.1", default_features=false, features = ["std", "derive"], optional = true }
 tabled = "0.10.0"
 
 [profile.release]
@@ -17,3 +20,7 @@ codegen-units = 1
 opt-level = "z"
 lto = "fat"
 strip = "symbols"
+
+[features]
+default = ["gui"]
+gui = ["dep:eframe", "dep:oneshot", "dep:strum"]

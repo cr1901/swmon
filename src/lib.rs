@@ -5,9 +5,33 @@ use clap::ValueEnum;
 use ddc_hi::{Ddc, Display, DisplayInfo};
 use tabled::Tabled;
 
+#[cfg(feature="gui")]
+use strum::{EnumIter, AsRefStr};
+
 pub struct TableDisplayInfo<'a> {
-    number: u8,
-    info: &'a DisplayInfo,
+    pub number: u8,
+    pub info: Cow<'a, DisplayInfo>,
+}
+
+impl<'a> TableDisplayInfo<'a> {
+    pub fn new(number: u8, info: Cow<'a, DisplayInfo>) -> Self {
+        Self {
+            number,
+            info
+        }
+    }
+
+    pub fn to_static(&self) -> TableDisplayInfo<'static> {
+        let info = match self.info {
+            Cow::Borrowed(info) => info.clone(),
+            Cow::Owned(ref info) => info.clone()
+        };
+
+        TableDisplayInfo {
+            number: self.number,
+            info: Cow::<'static, _>::Owned(info)
+        }
+    }
 }
 
 impl<'a> Tabled for TableDisplayInfo<'a> {
@@ -52,7 +76,8 @@ impl<'a> Tabled for TableDisplayInfo<'a> {
 }
 
 /// MCCS input sources- names follow the spec for Feature Code 0x60.
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, ValueEnum, PartialEq)]
+#[cfg_attr(feature="gui", derive(EnumIter, AsRefStr))]
 pub enum InputSource {
     Vga1 = 1,
     Vga2,
@@ -80,10 +105,7 @@ pub fn collect_display_info<'a>(display: &'a mut Vec<Display>) -> Vec<TableDispl
         .enumerate()
         .filter_map(|(i, display)| {
             if display.update_capabilities().is_ok() {
-                Some(TableDisplayInfo {
-                    number: i as u8,
-                    info: &display.info,
-                })
+                Some(TableDisplayInfo::new(i as u8, Cow::Borrowed(&display.info)))
             } else {
                 None
             }
