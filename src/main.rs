@@ -26,14 +26,13 @@ pub enum Cmd {
     },
 }
 
-
 fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.cmd {
         Cmd::List => {
             let mut display = Display::enumerate();
-            let display_info =  collect_display_info(&mut display);
+            let display_info = collect_display_info(&mut display);
             cli::print_table(&display_info);
         }
 

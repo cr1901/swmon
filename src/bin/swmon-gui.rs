@@ -2,9 +2,9 @@
 
 use ddc_hi::{Display, DisplayInfo};
 use oneshot::{self, TryRecvError};
-use strum::IntoEnumIterator;
 use std::sync::mpsc;
 use std::thread;
+use strum::IntoEnumIterator;
 
 use eframe::{egui, App};
 use swmon::{collect_display_info, do_switch, InputSource, TableDisplayInfo};
@@ -90,12 +90,10 @@ fn main() -> Result<(), eframe::Error> {
                         state = AppState::Idle {
                             displays,
                             monitor_select: 0,
-                            input_select: InputSource::Vga1
+                            input_select: InputSource::Vga1,
                         };
-                    },
-                    Ok(Ok(displays)) if displays.len() == 0 => {
-                        state = AppState::SendDetect
-                    },
+                    }
+                    Ok(Ok(displays)) if displays.len() == 0 => state = AppState::SendDetect,
                     Ok(Ok(_)) => unreachable!(),
                     Ok(Err(_)) => todo!(),
                     Err(TryRecvError::Empty) => {}
@@ -105,7 +103,7 @@ fn main() -> Result<(), eframe::Error> {
             AppState::Idle {
                 displays,
                 monitor_select,
-                input_select
+                input_select,
             } => {
                 fn choice_text(d: &DisplayInfo) -> String {
                     return format!(
@@ -120,13 +118,13 @@ fn main() -> Result<(), eframe::Error> {
                     .selected_text(choice_text(&displays[*monitor_select as usize].info));
                 combo.show_ui(ui, |ui| {
                     for (i, d) in displays.iter().enumerate() {
-                        let text= choice_text(&d.info);
+                        let text = choice_text(&d.info);
                         ui.selectable_value(monitor_select, i as u8, text);
                     }
                 });
 
-                let combo = egui::ComboBox::from_label("Select input")
-                    .selected_text(input_select.as_ref());
+                let combo =
+                    egui::ComboBox::from_label("Select input").selected_text(input_select.as_ref());
                 combo.show_ui(ui, |ui| {
                     for inp in InputSource::iter() {
                         ui.selectable_value(input_select, inp, inp.as_ref());
@@ -135,10 +133,14 @@ fn main() -> Result<(), eframe::Error> {
 
                 if ui.button("Switch!").clicked() {
                     let (send, recv) = oneshot::channel();
-                    cmd_send.clone().send(Cmd::SwitchMonitor((*monitor_select, *input_select, send)));
+                    cmd_send.clone().send(Cmd::SwitchMonitor((
+                        *monitor_select,
+                        *input_select,
+                        send,
+                    )));
                     state = AppState::Switch(recv);
                 }
-            },
+            }
             AppState::Switch(recv) => {
                 ui.label(format!("Switching inputs... please wait"));
                 let recv_res = recv.try_recv();
