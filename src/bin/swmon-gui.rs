@@ -87,15 +87,31 @@ fn main() -> Result<(), eframe::Error> {
     let mut state = AppState { control: ControlFlow::Waiting(WaitReason::Detecting { just_switched: false, recv }), switch: None};
     thread::spawn(|| bg_thread(cmd_recv));
 
+    let mut bottom_text = String::new();
     eframe::run_simple_native("swmon", options, move |ctx, _frame| {
+        egui::TopBottomPanel::bottom("bottom_panel") 
+            .resizable(false) 
+            .min_height(20.0)
+            .show(ctx, |ui| { 
+                ui.centered_and_justified(|ui| { 
+                    ui.label(&bottom_text)
+                });
+                bottom_text = String::new();
+            }); 
+
         egui::CentralPanel::default().show(ctx, |ui| match &mut state.control {
             ControlFlow::Waiting(WaitReason::Detecting { just_switched, recv }) => {
+                ui.centered_and_justified(|ui| {
+                    ui.add(egui::widgets::Spinner::new().size(100.0));
+                });
+
                 if *just_switched {
                     // Quietly go back to detection if we just switched inputs
-                    ui.label(format!("Switching inputs... please wait"));
+                    bottom_text = format!("Switching inputs... please wait");
                 } else {
-                    ui.label(format!("Detecting attached monitors... please wait"));
-                }
+                    bottom_text = format!("Detecting attached monitors... please wait");
+                } 
+
                 let recv_res = recv.try_recv();
 
                 match recv_res {
@@ -132,35 +148,51 @@ fn main() -> Result<(), eframe::Error> {
 
                 let SwitchState { displays, ref mut monitor_select, ref mut input_select } = state.switch.as_mut().unwrap();
 
-                let combo = egui::ComboBox::from_label("Select display")
-                    .selected_text(choice_text(&displays[*monitor_select as usize].info));
-                combo.show_ui(ui, |ui| {
-                    for (i, d) in displays.iter().enumerate() {
-                        let text = choice_text(&d.info);
-                        ui.selectable_value(monitor_select, i as u8, text);
-                    }
-                });
 
-                let combo =
-                    egui::ComboBox::from_label("Select input").selected_text(input_select.as_ref());
-                combo.show_ui(ui, |ui| {
-                    for inp in InputSource::iter() {
-                        ui.selectable_value(input_select, inp, inp.as_ref());
-                    }
-                });
-
-                if ui.button("Switch!").clicked() {
-                    let (send, recv) = oneshot::channel();
-                    cmd_send.clone().send(Cmd::SwitchMonitor((
-                        *monitor_select,
-                        *input_select,
-                        send,
-                    )));
-                    state.control = ControlFlow::Waiting(WaitReason::Switching(recv));
-                }
+                // ui.horizontal_centered(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Select display");
+                                let combo = egui::ComboBox::from_id_source("display")
+                                .selected_text(choice_text(&displays[*monitor_select as usize].info));
+                                combo.show_ui(ui, |ui| {
+                                    for (i, d) in displays.iter().enumerate() {
+                                        let text = choice_text(&d.info);
+                                        ui.selectable_value(monitor_select, i as u8, text);
+                                    }
+                                });
+                            });
+        
+                            ui.horizontal(|ui| {
+                                let combo = egui::ComboBox::from_id_source("input").selected_text(input_select.as_ref()).width(0.0);
+                                ui.label("Select input");
+                                combo.show_ui(ui, |ui| {
+                                    for inp in InputSource::iter() {
+                                        ui.selectable_value(input_select, inp, inp.as_ref());
+                                    }
+                                });
+                            });
+                        });
+    
+                        if ui.button("Switch!").clicked() {
+                            let (send, recv) = oneshot::channel();
+                            cmd_send.clone().send(Cmd::SwitchMonitor((
+                                *monitor_select,
+                                *input_select,
+                                send,
+                            )));
+                            state.control = ControlFlow::Waiting(WaitReason::Switching(recv));
+                        }
+                    });
+                // });
             },
             ControlFlow::Waiting(WaitReason::Switching(recv)) => {
-                ui.label(format!("Switching inputs... please wait"));
+                ui.centered_and_justified(|ui| {
+                    ui.add(egui::widgets::Spinner::new().size(100.0));
+                });
+
+                bottom_text = format!("Switching inputs... please wait");
                 let recv_res = recv.try_recv();
 
                 match recv_res {
