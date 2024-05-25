@@ -213,6 +213,8 @@ fn main() -> Result<(), eframe::Error> {
                                     ui.selectable_value(monitor_select, i as u8, text);
                                 }
                             });
+
+                            state.bottom_text = format!("{}", &displays[*monitor_select as usize].info);
                         });
 
                         ui.horizontal(|ui| {
