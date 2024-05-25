@@ -6,7 +6,7 @@ use ddc_hi::{Ddc, Display, DisplayInfo};
 use tabled::Tabled;
 
 #[cfg(feature = "gui")]
-use strum::{AsRefStr, EnumIter, Display};
+use strum::{AsRefStr, Display, EnumIter};
 
 pub struct TableDisplayInfo<'a> {
     pub number: u8,

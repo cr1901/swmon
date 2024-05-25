@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use core::fmt;
 use ddc_hi::{Display, DisplayInfo};
 use oneshot::{self, TryRecvError};
-use core::fmt;
-use std::{collections::VecDeque, sync::mpsc};
 use std::thread;
+use std::{collections::VecDeque, sync::mpsc};
 use strum::IntoEnumIterator;
 
 use eframe::egui;
@@ -14,7 +14,7 @@ struct AppState {
     control: ControlFlow,
     switch: Option<SwitchState>,
     bottom_text: String,
-    error_text: VecDeque<String>
+    error_text: VecDeque<String>,
 }
 
 enum ControlFlow {
@@ -38,7 +38,7 @@ enum WaitReason {
 }
 
 struct BackgroundError {
-    msg: String
+    msg: String,
 }
 
 type BgResult<T> = Result<T, BackgroundError>;
@@ -83,7 +83,7 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
                 match do_switch(displays.as_mut().unwrap(), num, input_source) {
                     Ok(_) => {
                         let _ = send.send(Ok(()));
-                    },
+                    }
                     Err(e) => {
                         let _ = send.send(Err(BackgroundError { msg: e.to_string() }));
                     }
@@ -106,7 +106,7 @@ fn main() -> Result<(), eframe::Error> {
     let detect_cmd = Cmd::DetectMonitors(send);
 
     let mut error_text = VecDeque::new();
-    
+
     let error_tmp = format!("Error sending request {}", detect_cmd);
     if cmd_send.clone().send(detect_cmd).is_err() {
         error_text.push_back(error_tmp);
@@ -120,7 +120,7 @@ fn main() -> Result<(), eframe::Error> {
         }),
         switch: None,
         bottom_text: String::new(),
-        error_text
+        error_text,
     };
     thread::spawn(|| bg_thread(cmd_recv));
 
@@ -137,20 +137,20 @@ fn main() -> Result<(), eframe::Error> {
             ControlFlow::Waiting(WaitReason::Detecting {
                 just_switched,
                 long_detect,
-                recv
+                recv,
             }) => {
                 ui.centered_and_justified(|ui| {
                     ui.add(egui::widgets::Spinner::new().size(100.0));
                 });
 
                 // Status reports that indicate no problems or probably
-                // transient problems. 
+                // transient problems.
                 state.bottom_text = match (*just_switched, *long_detect) {
                     (false, false) => format!("Detecting attached monitors... please wait"),
                     (false, true) => format!("Detect found nothing; no monitors?"),
                     // Quietly go back to detection if we just switched inputs
                     (true, false) => format!("Switching inputs... please wait"),
-                    (true, true) => format!("Refresh found nothing; monitors not responding?")
+                    (true, true) => format!("Refresh found nothing; monitors not responding?"),
                 };
 
                 let recv_res = recv.try_recv();
@@ -230,11 +230,7 @@ fn main() -> Result<(), eframe::Error> {
 
                     if ui.button("Switch!").clicked() {
                         let (send, recv) = oneshot::channel();
-                        let switch_cmd = Cmd::SwitchMonitor((
-                            *monitor_select,
-                            *input_select,
-                            send,
-                        ));
+                        let switch_cmd = Cmd::SwitchMonitor((*monitor_select, *input_select, send));
 
                         let error_text = format!("Error sending request {}", switch_cmd);
                         if cmd_send.clone().send(switch_cmd).is_ok() {
@@ -271,11 +267,15 @@ fn main() -> Result<(), eframe::Error> {
                         });
                     }
                     Ok(Err(BackgroundError { msg })) => {
-                        state.error_text.push_back(format!("Error switching monitor {}", msg));
-                    },
+                        state
+                            .error_text
+                            .push_back(format!("Error switching monitor {}", msg));
+                    }
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
-                        state.error_text.push_back("Monitor switching thread stopped responding!".to_string());
+                        state
+                            .error_text
+                            .push_back("Monitor switching thread stopped responding!".to_string());
                     }
                 }
             }
@@ -283,9 +283,9 @@ fn main() -> Result<(), eframe::Error> {
 
         let mut show_error = !state.error_text.is_empty();
         if show_error {
-            egui::Window::new("Error").open(&mut show_error).show(ctx, |ui| {
-                ui.label(state.error_text.get(0).unwrap())
-            });
+            egui::Window::new("Error")
+                .open(&mut show_error)
+                .show(ctx, |ui| ui.label(state.error_text.get(0).unwrap()));
         }
 
         if !show_error {
