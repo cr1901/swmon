@@ -24,3 +24,7 @@ strip = "symbols"
 [features]
 default = ["gui"]
 gui = ["dep:eframe", "dep:oneshot", "dep:strum"]
+
+
+[patch.crates-io]
+ddc-winapi = { git = "https://github.com/cr1901/ddc-winapi-rs", branch = "winfix-2.x"}
