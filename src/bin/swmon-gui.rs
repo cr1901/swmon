@@ -3,7 +3,7 @@
 use ddc_hi::{Display, DisplayInfo};
 use oneshot::{self, TryRecvError};
 use core::fmt;
-use std::sync::mpsc;
+use std::{collections::VecDeque, sync::mpsc};
 use std::thread;
 use strum::IntoEnumIterator;
 
@@ -14,7 +14,7 @@ struct AppState {
     control: ControlFlow,
     switch: Option<SwitchState>,
     bottom_text: String,
-    error_text: Option<String>,
+    error_text: VecDeque<String>
 }
 
 enum ControlFlow {
@@ -105,9 +105,11 @@ fn main() -> Result<(), eframe::Error> {
     let (send, recv) = oneshot::channel();
     let detect_cmd = Cmd::DetectMonitors(send);
 
-    let mut error_text = Some(format!("Error sending request {}", detect_cmd));
-    if cmd_send.clone().send(detect_cmd).is_ok() {
-        error_text = None;
+    let mut error_text = VecDeque::new();
+    
+    let error_tmp = format!("Error sending request {}", detect_cmd);
+    if cmd_send.clone().send(detect_cmd).is_err() {
+        error_text.push_back(error_tmp);
     }
 
     let mut state = AppState {
@@ -168,9 +170,9 @@ fn main() -> Result<(), eframe::Error> {
                         let (send, recv_) = oneshot::channel();
                         let detect_cmd = Cmd::DetectMonitors(send);
 
-                        state.error_text = Some(format!("Error sending request {}", detect_cmd));
+                        let error_text = format!("Error sending request {}", detect_cmd);
                         if cmd_send.clone().send(detect_cmd).is_ok() {
-                            state.error_text = None;
+                            state.error_text.push_back(error_text)
                         }
 
                         *recv = recv_
@@ -234,9 +236,9 @@ fn main() -> Result<(), eframe::Error> {
                             send,
                         ));
 
-                        state.error_text = Some(format!("Error sending request {}", switch_cmd));
+                        let error_text = format!("Error sending request {}", switch_cmd);
                         if cmd_send.clone().send(switch_cmd).is_ok() {
-                            state.error_text = None;
+                            state.error_text.push_back(error_text)
                         }
 
                         state.control = ControlFlow::Waiting(WaitReason::Switching(recv));
@@ -257,9 +259,9 @@ fn main() -> Result<(), eframe::Error> {
                         let (send, recv) = oneshot::channel();
                         let detect_cmd = Cmd::DetectMonitors(send);
 
-                        state.error_text = Some(format!("Error sending request {}", detect_cmd));
+                        let error_text = format!("Error sending request {}", detect_cmd);
                         if cmd_send.clone().send(detect_cmd).is_ok() {
-                            state.error_text = None;
+                            state.error_text.push_back(error_text);
                         }
 
                         state.control = ControlFlow::Waiting(WaitReason::Detecting {
@@ -269,25 +271,25 @@ fn main() -> Result<(), eframe::Error> {
                         });
                     }
                     Ok(Err(BackgroundError { msg })) => {
-                        state.error_text = Some(format!("Error switching monitor {}", msg));
+                        state.error_text.push_back(format!("Error switching monitor {}", msg));
                     },
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
-                        state.error_text = Some("Monitor switching thread stopped responding!".to_string());
+                        state.error_text.push_back("Monitor switching thread stopped responding!".to_string());
                     }
                 }
             }
         });
 
-        let mut show_error = state.error_text.is_some();
+        let mut show_error = !state.error_text.is_empty();
         if show_error {
             egui::Window::new("Error").open(&mut show_error).show(ctx, |ui| {
-                ui.label(state.error_text.as_ref().unwrap())
+                ui.label(state.error_text.get(0).unwrap())
             });
         }
 
         if !show_error {
-            state.error_text = None;
+            let _ = state.error_text.pop_front();
         }
     })
 }
