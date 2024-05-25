@@ -6,7 +6,7 @@ use ddc_hi::{Ddc, Display, DisplayInfo};
 use tabled::Tabled;
 
 #[cfg(feature = "gui")]
-use strum::{AsRefStr, EnumIter};
+use strum::{AsRefStr, EnumIter, Display};
 
 pub struct TableDisplayInfo<'a> {
     pub number: u8,
@@ -74,7 +74,7 @@ impl<'a> Tabled for TableDisplayInfo<'a> {
 
 /// MCCS input sources- names follow the spec for Feature Code 0x60.
 #[derive(Clone, Copy, ValueEnum, PartialEq)]
-#[cfg_attr(feature = "gui", derive(EnumIter, AsRefStr))]
+#[cfg_attr(feature = "gui", derive(EnumIter, AsRefStr, Display))]
 pub enum InputSource {
     Vga1 = 1,
     Vga2,

@@ -2,6 +2,7 @@
 
 use ddc_hi::{Display, DisplayInfo};
 use oneshot::{self, TryRecvError};
+use core::fmt;
 use std::sync::mpsc;
 use std::thread;
 use strum::IntoEnumIterator;
@@ -12,6 +13,8 @@ use swmon::{collect_display_info, do_switch, InputSource, TableDisplayInfo};
 struct AppState {
     control: ControlFlow,
     switch: Option<SwitchState>,
+    bottom_text: String,
+    error_text: Option<String>,
 }
 
 enum ControlFlow {
@@ -28,18 +31,30 @@ struct SwitchState {
 enum WaitReason {
     Detecting {
         just_switched: bool,
+        long_detect: bool,
         recv: oneshot::Receiver<BgResult<Vec<TableDisplayInfo<'static>>>>,
     },
     Switching(oneshot::Receiver<BgResult<()>>),
 }
 
-struct BackgroundError {}
+struct BackgroundError {
+    msg: String
+}
 
 type BgResult<T> = Result<T, BackgroundError>;
 
 enum Cmd {
     DetectMonitors(oneshot::Sender<BgResult<Vec<TableDisplayInfo<'static>>>>),
     SwitchMonitor((u8, InputSource, oneshot::Sender<BgResult<()>>)),
+}
+
+impl fmt::Display for Cmd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cmd::DetectMonitors(_) => f.write_str("DetectMonitors"),
+            Cmd::SwitchMonitor((i, src, _)) => write!(f, "SwitchMonitor ({}, {})", i, src),
+        }
+    }
 }
 
 fn bg_thread(recv: mpsc::Receiver<Cmd>) {
@@ -62,13 +77,18 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
                         .into_iter()
                         .map(|d| d.to_static())
                         .collect();
-                send.send(Ok(display_info));
+                let _ = send.send(Ok(display_info));
             }
             Cmd::SwitchMonitor((num, input_source, send)) => {
-                do_switch(displays.as_mut().unwrap(), num, input_source);
-                send.send(Ok(()));
+                match do_switch(displays.as_mut().unwrap(), num, input_source) {
+                    Ok(_) => {
+                        let _ = send.send(Ok(()));
+                    },
+                    Err(e) => {
+                        let _ = send.send(Err(BackgroundError { msg: e.to_string() }));
+                    }
+                }
             }
-            _ => unimplemented!(),
         }
     }
 }
@@ -83,41 +103,53 @@ fn main() -> Result<(), eframe::Error> {
 
     let (cmd_send, cmd_recv) = mpsc::channel();
     let (send, recv) = oneshot::channel();
-    cmd_send.clone().send(Cmd::DetectMonitors(send));
+    let detect_cmd = Cmd::DetectMonitors(send);
+
+    let mut error_text = Some(format!("Error sending request {}", detect_cmd));
+    if cmd_send.clone().send(detect_cmd).is_ok() {
+        error_text = None;
+    }
+
     let mut state = AppState {
         control: ControlFlow::Waiting(WaitReason::Detecting {
             just_switched: false,
+            long_detect: false,
             recv,
         }),
         switch: None,
+        bottom_text: String::new(),
+        error_text
     };
     thread::spawn(|| bg_thread(cmd_recv));
 
-    let mut bottom_text = String::new();
     eframe::run_simple_native("swmon", options, move |ctx, _frame| {
         egui::TopBottomPanel::bottom("bottom_panel")
             .resizable(false)
             .min_height(20.0)
             .show(ctx, |ui| {
-                ui.centered_and_justified(|ui| ui.label(&bottom_text));
-                bottom_text = String::new();
+                ui.centered_and_justified(|ui| ui.label(&state.bottom_text));
+                state.bottom_text = String::new();
             });
 
         egui::CentralPanel::default().show(ctx, |ui| match &mut state.control {
             ControlFlow::Waiting(WaitReason::Detecting {
                 just_switched,
-                recv,
+                long_detect,
+                recv
             }) => {
                 ui.centered_and_justified(|ui| {
                     ui.add(egui::widgets::Spinner::new().size(100.0));
                 });
 
-                if *just_switched {
+                // Status reports that indicate no problems or probably
+                // transient problems. 
+                state.bottom_text = match (*just_switched, *long_detect) {
+                    (false, false) => format!("Detecting attached monitors... please wait"),
+                    (false, true) => format!("Detect found nothing; no monitors?"),
                     // Quietly go back to detection if we just switched inputs
-                    bottom_text = format!("Switching inputs... please wait");
-                } else {
-                    bottom_text = format!("Detecting attached monitors... please wait");
-                }
+                    (true, false) => format!("Switching inputs... please wait"),
+                    (true, true) => format!("Refresh found nothing; monitors not responding?")
+                };
 
                 let recv_res = recv.try_recv();
 
@@ -134,7 +166,13 @@ fn main() -> Result<(), eframe::Error> {
                     }
                     Ok(Ok(displays)) if displays.len() == 0 => {
                         let (send, recv_) = oneshot::channel();
-                        cmd_send.clone().send(Cmd::DetectMonitors(send));
+                        let detect_cmd = Cmd::DetectMonitors(send);
+
+                        state.error_text = Some(format!("Error sending request {}", detect_cmd));
+                        if cmd_send.clone().send(detect_cmd).is_ok() {
+                            state.error_text = None;
+                        }
+
                         *recv = recv_
                     }
                     Ok(Ok(_)) => unreachable!(),
@@ -190,11 +228,17 @@ fn main() -> Result<(), eframe::Error> {
 
                     if ui.button("Switch!").clicked() {
                         let (send, recv) = oneshot::channel();
-                        cmd_send.clone().send(Cmd::SwitchMonitor((
+                        let switch_cmd = Cmd::SwitchMonitor((
                             *monitor_select,
                             *input_select,
                             send,
-                        )));
+                        ));
+
+                        state.error_text = Some(format!("Error sending request {}", switch_cmd));
+                        if cmd_send.clone().send(switch_cmd).is_ok() {
+                            state.error_text = None;
+                        }
+
                         state.control = ControlFlow::Waiting(WaitReason::Switching(recv));
                     }
                 });
@@ -205,23 +249,45 @@ fn main() -> Result<(), eframe::Error> {
                     ui.add(egui::widgets::Spinner::new().size(100.0));
                 });
 
-                bottom_text = format!("Switching inputs... please wait");
+                state.bottom_text = format!("Switching inputs... please wait");
                 let recv_res = recv.try_recv();
 
                 match recv_res {
                     Ok(Ok(_)) => {
                         let (send, recv) = oneshot::channel();
-                        cmd_send.clone().send(Cmd::DetectMonitors(send));
+                        let detect_cmd = Cmd::DetectMonitors(send);
+
+                        state.error_text = Some(format!("Error sending request {}", detect_cmd));
+                        if cmd_send.clone().send(detect_cmd).is_ok() {
+                            state.error_text = None;
+                        }
+
                         state.control = ControlFlow::Waiting(WaitReason::Detecting {
                             just_switched: true,
+                            long_detect: false,
                             recv,
                         });
                     }
-                    Ok(Err(_)) => todo!(),
+                    Ok(Err(BackgroundError { msg })) => {
+                        state.error_text = Some(format!("Error switching monitor {}", msg));
+                    },
                     Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => todo!(),
+                    Err(TryRecvError::Disconnected) => {
+                        state.error_text = Some("Monitor switching thread stopped responding!".to_string());
+                    }
                 }
             }
         });
+
+        let mut show_error = state.error_text.is_some();
+        if show_error {
+            egui::Window::new("Error").open(&mut show_error).show(ctx, |ui| {
+                ui.label(state.error_text.as_ref().unwrap())
+            });
+        }
+
+        if !show_error {
+            state.error_text = None;
+        }
     })
 }
