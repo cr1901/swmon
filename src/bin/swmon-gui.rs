@@ -26,6 +26,8 @@ enum ControlFlow {
 
 struct SwitchState {
     displays: Vec<TableDisplayInfo<'static>>,
+    /// Map monitor select to displays vec.
+    displays_map: Vec<u8>,
     monitor_select: u8,
     input_select: InputSource,
 }
@@ -96,6 +98,7 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
             Cmd::SwitchMonitor((num, input_source, send)) => {
                 match displays.as_mut() {
                     Some(d) => {
+                        debug!(target: "bg", "Switching monitor {}", num);
                         match do_switch(d, num, input_source) {
                             Ok(_) => {
                                 let _ = send.send(Ok(()));
@@ -175,8 +178,9 @@ fn main() -> Result<(), eframe::Error> {
                     (false, false) => format!("Detecting attached monitors... please wait"),
                     (false, true) => format!("Detect found nothing; no monitors?"),
                     // Quietly go back to detection if we just switched inputs
-                    (true, false) => format!("Switching inputs... please wait"),
-                    (true, true) => format!("Refresh found nothing; monitors not responding?"),
+                    (true, _) => format!("Switching inputs... please wait"),
+                    // This is too common in normal operation to justify right now.
+                    // (true, true) => format!("Refresh found nothing; monitors not responding?"),
                 };
 
                 let recv_res = recv.try_recv();
@@ -184,8 +188,16 @@ fn main() -> Result<(), eframe::Error> {
                 match recv_res {
                     Ok(Ok(displays)) if displays.len() > 0 => {
                         if !*just_switched {
+                            // If max_id is 255 we need a 256 element reverse-map.
+                            let max_id: u16 = displays.iter().map(|d| d.number).max().unwrap() as u16;
+                            let mut displays_map = vec![0; (max_id + 1) as usize];
+                            for (i, d) in displays.iter().map(|d| d.number).enumerate() {
+                                displays_map[d as usize] = i as u8;
+                            }
+
                             state.switch = Some(SwitchState {
                                 displays,
+                                displays_map,
                                 monitor_select: 0,
                                 input_select: InputSource::Vga1,
                             });
@@ -222,6 +234,7 @@ fn main() -> Result<(), eframe::Error> {
 
                 let SwitchState {
                     displays,
+                    displays_map,
                     ref mut monitor_select,
                     ref mut input_select,
                 } = state.switch.as_mut().unwrap();
@@ -232,16 +245,16 @@ fn main() -> Result<(), eframe::Error> {
                         ui.horizontal(|ui| {
                             ui.label("Select display");
                             let combo = egui::ComboBox::from_id_source("display").selected_text(
-                                choice_text(&displays[*monitor_select as usize].info),
+                                choice_text(&displays[displays_map[*monitor_select as usize]as usize].info),
                             );
                             combo.show_ui(ui, |ui| {
-                                for (i, d) in displays.iter().enumerate() {
+                                for d in displays.iter() {
                                     let text = choice_text(&d.info);
-                                    ui.selectable_value(monitor_select, i as u8, text);
+                                    ui.selectable_value(monitor_select, d.number, text);
                                 }
                             });
 
-                            state.bottom_text = format!("{}", &displays[*monitor_select as usize].info);
+                            state.bottom_text = format!("{}", &displays[displays_map[*monitor_select as usize] as usize].info);
                         });
 
                         ui.horizontal(|ui| {
