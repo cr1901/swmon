@@ -67,17 +67,17 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
 
     let mut i = 0;
     loop {
-        trace!(target: "bg", "Waiting for event {}", i);
+        trace!(target: "swmon-gui-bg", "Waiting for event {}", i);
         let res = if let Ok(cmd) = recv.recv() {
             cmd
         } else {
-            debug!(target: "bg", "Sender disconnected");
+            debug!(target: "swmon-gui-bg", "Sender disconnected");
             break;
         };
 
         match res {
             Cmd::DetectMonitors(send) => {
-                debug!(target: "bg", "Detecting monitors");
+                debug!(target: "swmon-gui-bg", "Detecting monitors");
                 displays.replace(Display::enumerate());
 
                 match displays.as_mut() {
@@ -90,7 +90,7 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
                         let _ = send.send(Ok(display_info));
                     },
                     None => {
-                        debug!(target: "bg", "No monitors detected");
+                        debug!(target: "swmon-gui-bg", "No monitors detected");
                         return;
                     }
                 }
@@ -98,19 +98,19 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
             Cmd::SwitchMonitor((num, input_source, send)) => {
                 match displays.as_mut() {
                     Some(d) => {
-                        debug!(target: "bg", "Switching monitor {}", num);
+                        debug!(target: "swmon-gui-bg", "Switching monitor {}", num);
                         match do_switch(d, num, input_source) {
                             Ok(_) => {
                                 let _ = send.send(Ok(()));
                             }
                             Err(e) => {
-                                debug!(target: "bg", "Could not perform switch: {}", e);
+                                debug!(target: "swmon-gui-bg", "Could not perform switch: {}", e);
                                 let _ = send.send(Err(BackgroundError { msg: e.to_string() }));
                             }
                         }
                     },
                     None => {
-                        debug!(target: "bg", "Detected displays are gone");
+                        debug!(target: "swmon-gui-bg", "Detected displays are gone");
                         return;
                     }
                 }

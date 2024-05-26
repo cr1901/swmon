@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use anyhow::{anyhow, Result};
 use clap::ValueEnum;
 use ddc_hi::{Ddc, Display, DisplayInfo};
+use log::debug;
 use tabled::Tabled;
 
 #[cfg(feature = "gui")]
@@ -104,6 +105,7 @@ pub fn collect_display_info<'a>(display: &'a mut Vec<Display>) -> Vec<TableDispl
             if display.update_capabilities().is_ok() {
                 Some(TableDisplayInfo::new(i as u8, Cow::Borrowed(&display.info)))
             } else {
+                debug!(target: "swmon", "Display {} ({}) doesn't support VCP commands", i, &display.info);
                 None
             }
         })

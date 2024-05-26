@@ -1,5 +1,3 @@
-use std::{thread, time::Duration};
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use ddc_hi::Display;
