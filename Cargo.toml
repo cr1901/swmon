@@ -3,6 +3,9 @@ name = "swmon"
 version = "0.1.0"
 authors = ["William D. Jones <thor0505@comcast.net>"]
 edition = "2021"
+license = "MIT"
+description = "Switch inputs to a computer monitor programmatically"
+repository = "https://github.com/cr1901/swmon"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +13,7 @@ edition = "2021"
 anyhow = "1.0.68"
 clap = { version = "4.0.32", default_features=false, features = ["std", "derive", "help"] }
 ddc-hi = "0.4.1"
-eframe = { version = "0.26.2", optional = true }
+eframe = { version = "0.26.2", optional = true, default-features = false, features = ["default_fonts", "glow"] }
 env_logger = { version = "0.11.3", default-features = false }
 log = { version = "0.4.21", default-features = false }
 oneshot = { version = "0.1.6", default_features=false, features = ["std"], optional = true }
