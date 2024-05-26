@@ -2,6 +2,8 @@
 
 use core::fmt;
 use ddc_hi::{Display, DisplayInfo};
+use env_logger;
+use log::{debug, trace};
 use oneshot::{self, TryRecvError};
 use std::thread;
 use std::{collections::VecDeque, sync::mpsc};
@@ -61,40 +63,64 @@ fn bg_thread(recv: mpsc::Receiver<Cmd>) {
     let mut displays = None;
     // let mut display_info = None;
 
+    let mut i = 0;
     loop {
+        trace!(target: "bg", "Waiting for event {}", i);
         let res = if let Ok(cmd) = recv.recv() {
             cmd
         } else {
+            debug!(target: "bg", "Sender disconnected");
             break;
         };
 
         match res {
             Cmd::DetectMonitors(send) => {
+                debug!(target: "bg", "Detecting monitors");
                 displays.replace(Display::enumerate());
 
-                let display_info: Vec<TableDisplayInfo<'static>> =
-                    collect_display_info(displays.as_mut().unwrap())
-                        .into_iter()
-                        .map(|d| d.to_static())
-                        .collect();
-                let _ = send.send(Ok(display_info));
-            }
-            Cmd::SwitchMonitor((num, input_source, send)) => {
-                match do_switch(displays.as_mut().unwrap(), num, input_source) {
-                    Ok(_) => {
-                        let _ = send.send(Ok(()));
-                    }
-                    Err(e) => {
-                        let _ = send.send(Err(BackgroundError { msg: e.to_string() }));
+                match displays.as_mut() {
+                    Some(d) => {
+                        let display_info: Vec<TableDisplayInfo<'static>> =
+                        collect_display_info(d)
+                            .into_iter()
+                            .map(|d| d.to_static())
+                            .collect();
+                        let _ = send.send(Ok(display_info));
+                    },
+                    None => {
+                        debug!(target: "bg", "No monitors detected");
+                        return;
                     }
                 }
             }
+            Cmd::SwitchMonitor((num, input_source, send)) => {
+                match displays.as_mut() {
+                    Some(d) => {
+                        match do_switch(d, num, input_source) {
+                            Ok(_) => {
+                                let _ = send.send(Ok(()));
+                            }
+                            Err(e) => {
+                                debug!(target: "bg", "Could not perform switch: {}", e);
+                                let _ = send.send(Err(BackgroundError { msg: e.to_string() }));
+                            }
+                        }
+                    },
+                    None => {
+                        debug!(target: "bg", "Detected displays are gone");
+                        return;
+                    }
+                }
+
+            }
         }
+
+        i += 1;
     }
 }
 
 fn main() -> Result<(), eframe::Error> {
-    // env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
@@ -171,10 +197,11 @@ fn main() -> Result<(), eframe::Error> {
                         let detect_cmd = Cmd::DetectMonitors(send);
 
                         let error_text = format!("Error sending request {}", detect_cmd);
-                        if cmd_send.clone().send(detect_cmd).is_ok() {
+                        if cmd_send.clone().send(detect_cmd).is_err() {
                             state.error_text.push_back(error_text)
                         }
 
+                        *long_detect = true;
                         *recv = recv_
                     }
                     Ok(Ok(_)) => unreachable!(),
@@ -235,7 +262,7 @@ fn main() -> Result<(), eframe::Error> {
                         let switch_cmd = Cmd::SwitchMonitor((*monitor_select, *input_select, send));
 
                         let error_text = format!("Error sending request {}", switch_cmd);
-                        if cmd_send.clone().send(switch_cmd).is_ok() {
+                        if cmd_send.clone().send(switch_cmd).is_err() {
                             state.error_text.push_back(error_text)
                         }
 
@@ -258,7 +285,7 @@ fn main() -> Result<(), eframe::Error> {
                         let detect_cmd = Cmd::DetectMonitors(send);
 
                         let error_text = format!("Error sending request {}", detect_cmd);
-                        if cmd_send.clone().send(detect_cmd).is_ok() {
+                        if cmd_send.clone().send(detect_cmd).is_err() {
                             state.error_text.push_back(error_text);
                         }
 
@@ -269,15 +296,29 @@ fn main() -> Result<(), eframe::Error> {
                         });
                     }
                     Ok(Err(BackgroundError { msg })) => {
+                        let (send, recv) = oneshot::channel();
+                        let detect_cmd = Cmd::DetectMonitors(send);
+
                         state
                             .error_text
                             .push_back(format!("Error switching monitor {}", msg));
+
+                        let error_text = format!("Error sending request {}", detect_cmd);
+                        if cmd_send.clone().send(detect_cmd).is_err() {
+                            state.error_text.push_back(error_text);
+                        }
+
+                        state.control = ControlFlow::Waiting(WaitReason::Detecting {
+                            just_switched: true,
+                            long_detect: false,
+                            recv,
+                        });
                     }
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
                         state
                             .error_text
-                            .push_back("Monitor switching thread stopped responding!".to_string());
+                            .push_back("Monitor switching thread stopped responding! Close and restart to fix.".to_string());
                     }
                 }
             }
