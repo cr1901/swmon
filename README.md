@@ -41,7 +41,7 @@ using the `swmon-gui` command:
   and monitor input type to switch to. The mouse hovers over the "HDMI 2"
   selection to the input combobox. A "Switch!" button is on the right, which
   actually performs the monitor switch. Information on the current selected
-  monitor is provided in a small bottom panel.](assets\swmon-gui_k8Sy5hg15P.png)
+  monitor is provided in a small bottom panel.](assets/swmon-gui_k8Sy5hg15P.png)
 
 ## Future Work
 * Report which input is currently active.

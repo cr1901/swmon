@@ -1,0 +1,67 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    needs: create-release
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin,
+                 x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc]
+        include:
+            - target: aarch64-apple-darwin
+              os: macos-latest
+            - target: x86_64-apple-darwin
+              os: macos-latest
+            - target: x86_64-unknown-linux-gnu
+              os: ubuntu-latest
+            - target: x86_64-pc-windows-msvc
+              os: windows-latest
+              assets: target/wix/swmon-${{github.ref_name}}-x86_64.msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set path to sed (Windows)
+        if: runner.os == 'Windows'
+        run: echo "C:\\Program Files\\Git\\usr\\bin\\" >> $GITHUB_PATH
+      - name: Normalize README.md image paths
+        run: sed -ie 's%(assets/%(%g' README.md
+      - name: Install packages (Linux)
+        if: ${{ runner.os == 'Linux' && !matrix.apt-arch }}
+        run: sudo apt-get update && sudo apt-get install libudev-dev
+      - name: Install MSI (Windows)
+        if: runner.os == 'Windows'
+        run: |
+            cargo install cargo-wix
+            cargo wix -vo target/wix/swmon-${{github.ref_name}}-x86_64.msi
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          # (required) Comma-separated list of binary names (non-extension portion of filename) to build and upload.
+          # Note that glob pattern is not supported yet.
+          bin: swmon,swmon-gui
+          include: CHANGELOG.md,LICENSE.md,README.md,assets/swmon-gui_k8Sy5hg15P.png
+          # (optional) Target triple, default is host triple.
+          target: ${{ matrix.target }}
+          tar: unix
+          zip: windows
+          archive: swmon-$target
+          leading-dir: true
+          asset: ${{ matrix.assets || '' }}
+          # (required) GitHub token for uploading assets to GitHub Releases.
+          token: ${{ secrets.GITHUB_TOKEN }}
