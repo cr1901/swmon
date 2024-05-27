@@ -32,6 +32,17 @@ I do not provide a [crates.io](https://crates.io) release at this time.
 3. Enjoy the 15-30 seconds you saved by not having to push buttons on your
    monitor to switch inputs :).
 
+## GUI
+An [`egui`](https://github.com/emilk/egui) GUI is also provided, based on the
+`swmon list` and `swmon switch` commands as described above. It can be run with
+using the `swmon-gui` command:
+
+![Picture of swmon GUI window, showing two comboboxes on the left to choose a monitor
+  and monitor input type to switch to. The mouse hovers over the "HDMI 2"
+  selection to the input combobox. A "Switch!" button is on the right, which
+  actually performs the monitor switch. Information on the current selected
+  monitor is provided in a small bottom panel.](assets\swmon-gui_k8Sy5hg15P.png)
+
 ## Future Work
 * Report which input is currently active.
 * Report monitors which don't speak DDC protocols in `swmon list`.
