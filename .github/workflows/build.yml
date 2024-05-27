@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin,
+                 # aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf,
+                 x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc]
+        include:
+            - target: aarch64-apple-darwin
+              os: macos-latest
+            - target: x86_64-apple-darwin
+              os: macos-latest
+            # - target: aarch64-unknown-linux-gnu
+            #   os: ubuntu-latest
+            #   pkg-config-arch: aarch64-linux-gnu
+            #   apt-arch: arm64
+            # - target: armv7-unknown-linux-gnueabihf
+            #   os: ubuntu-latest
+            #   pkg-config-arch: arm-linux-gnueabihf
+            #   apt-arch: armhf
+            - target: x86_64-unknown-linux-gnu
+              os: ubuntu-latest
+            - target: x86_64-pc-windows-msvc
+              os: windows-latest
+              
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    # FIXME: Cannot get to work right now, come back to it later.
+    # - name: Install cross-compilation tools
+    #   if: ${{ matrix.target }}
+    #   uses: taiki-e/setup-cross-toolchain-action@v1
+    #   with:
+    #     target: ${{ matrix.target }}
+    - name: Install packages (Linux)
+      if: ${{ runner.os == 'Linux' && !matrix.apt-arch }}
+      run: sudo apt-get update && sudo apt-get install libudev-dev
+    # - name: Install cross packages (Linux)
+    #   if: ${{ runner.os == 'Linux' && matrix.apt-arch }}
+    #   run: |
+    #     sudo bash -c "echo 'deb http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe' >> /etc/apt/sources.list"
+    #     sudo dpkg --add-architecture ${{matrix.apt-arch}}
+    #     sudo apt-get update || true
+    #     sudo apt-get install libudev-dev:${{matrix.apt-arch}}
+    # - name: Prepare pkg-config
+    #   if: ${{ runner.os == 'Linux' && matrix.pkg-config-arch }}
+    #   run: |
+    #     echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+    #     echo "PKG_CONFIG_LIBDIR=/usr/lib//pkgconfig"
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
